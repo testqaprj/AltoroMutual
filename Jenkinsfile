@@ -2,7 +2,7 @@ def label = "mypod-${UUID.randomUUID().toString()}"
 podTemplate(label: label) {
 
  node(label) {
-	
+	sleep 300
 	currentBuild.displayName = "1.${BUILD_NUMBER}"
 	def GIT_COMMIT
   stage ('cloning the repository'){
