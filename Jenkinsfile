@@ -1,7 +1,7 @@
 def label = "mypod-${UUID.randomUUID().toString()}"
 podTemplate(label: label) {
 
-node{
+ node(label) {
 	
 	currentBuild.displayName = "1.${BUILD_NUMBER}"
 	def GIT_COMMIT
