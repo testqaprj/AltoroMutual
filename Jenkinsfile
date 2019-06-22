@@ -1,12 +1,10 @@
-def label = "mypod-${UUID.randomUUID().toString()}"
-podTemplate(label: label) {
-
- node(label) {
+node{
 	
 	currentBuild.displayName = "1.${BUILD_NUMBER}"
 	def GIT_COMMIT
   stage ('cloning the repository'){
-      git 'https://github.com/tapansirol/AltoroJ.git'
+     def result = git 'https://github.com/tapansirol/AltoroJ.git'  
+     GIT_COMMIT = result.GIT_COMMIT		  
   }
 	
   stage('Gradle Build') {
@@ -42,7 +40,7 @@ podTemplate(label: label) {
                 $class: 'com.urbancode.jenkins.plugins.ucdeploy.DeliveryHelper$Push',
                 pushVersion: '1.${BUILD_NUMBER}',
                 //baseDir: '/var/jenkins_home/workspace/JPetStore/target',
-		 baseDir: '/home/jenkins/workspace/Altoro/build/libs/',
+		 baseDir: '/var/jenkins_home/workspace/Altoro/build/libs/',
                 fileIncludePatterns: '*.war',
                 fileExcludePatterns: '',
                // pushProperties: 'jenkins.server=Jenkins-app\njenkins.reviewed=false',
@@ -73,7 +71,5 @@ podTemplate(label: label) {
 			 deployReqProps: '', 
 			 deployVersions: "AltoroComponent:1.${BUILD_NUMBER}"], 
 		siteName: 'ucd-server'])
-     }
-   }
-
+ }
 }
