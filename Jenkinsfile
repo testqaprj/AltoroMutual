@@ -1,96 +1,79 @@
-node {
+def label = "mypod-${UUID.randomUUID().toString()}"
+podTemplate(label: label) {
+
+ node(label) {
+	
 	currentBuild.displayName = "1.${BUILD_NUMBER}"
 	def GIT_COMMIT
-	stage ('SCM'){
-		checkout([
-			$class: 'GitSCM', branches: [[name: '*/<BRANCH_NAME>']],
-			userRemoteConfigs: [[url: '<GIT_REPO_URL>'],[credentialsId:'<GIT_CREDENTIAL_ID>']]
-		])
-		GIT_COMMIT = sh(returnStdout: true, script: "git rev-parse HEAD").trim()
-	}
-
-	stage ('Build') {
-		withMaven(jdk: 'JDK_local', maven: 'MVN_Local') {
-			sh 'mvn clean package'
-		}
-	}
-
-	stage ('Cucumber'){
-		withMaven(jdk: 'JDK_local', maven: 'MVN_Local') {
-			sh 'mvn test -Dtest=<CUCUMBER_TEST_CLASS_NAME>'
-		}
-		cucumber buildStatus: "Success",
-		fileIncludePattern: "**/cucumber.json",
-		jsonReportDirectory: '<Path/to/report/folder>'
-	}
-
-	stage('SonarQube Analysis'){
-		def mvnHome = tool name : 'MVN_Local', type:'maven'
-		withSonarQubeEnv('sonar-server'){
-			"SONAR_USER_HOME=/opt/bitnami/jenkins/.sonar ${mvnHome}/bin/mvn sonar:sonar"
-			sh  "${mvnHome}/bin/mvn sonar:sonar -Dsonar.projectKey=<PROJECT_KEY> -Dsonar.projectName=<PROJECT_NAME>"
-		}
-	}
-
-
+  stage ('cloning the repository'){
+      git 'https://github.com/tapansirol/AltoroJ.git'
+  }
+	
+  stage('Gradle Build') {
+       //def gradleHome = tool name : 'mygradle', type 'gradle',
+        //sh "${gradleHome}/bin/gradle clean build"
+        def path = tool name: 'gradle-4.7', type: 'gradle'
+        sh "${path}/bin/gradle build"
+   }
+   
+   stage('SonarQube analysis') {
+//	   sleep 10
+      def path = tool name: 'gradle-4.7', type: 'gradle'
+      withSonarQubeEnv('sonar-server') {
+        sh "${path}/bin/gradle --info -Dsonar.host.url=$SONAR_HOST_URL sonarqube"
+    }
+  }
 	stage ("Appscan"){
-		sleep 40
-		appscan application: '<APPSCAN_APPLICATION_NAME>',
-				credentials: '<ASOC_CREDENTIAL_ID>',
-				failBuild: true,
-				failureConditions: [failure_condition(failureType: 'high', threshold: 100)],
-				name: '<APPSCAN_APPLICATION_NAME>',
-				scanner: static_analyzer(hasOptions: false, target: '/var/jenkins_home/jobs/project_name'),
-				type: 'Static Analyzer',
-				wait: true
+		//appscan application: '84963f4f-0cf4-4262-9afe-3bd7c0ec3942', credentials: 'Credential for ASOC', failBuild: true, failureConditions: [failure_condition(failureType: 'high', threshold: 20)], name: '84963f4f-0cf4-4262-9afe-3bd7c0ec39421562', scanner: static_analyzer(hasOptions: false, target: '/var/jenkins_home/workspace/Altoro/build/libs/'), type: 'Static Analyzer'
 	}
+	
+  stage('Publish Artificats to UCD'){
+   step([$class: 'UCDeployPublisher',
+        siteName: 'ucd-server',
+        component: [
+            $class: 'com.urbancode.jenkins.plugins.ucdeploy.VersionHelper$VersionBlock',
+            componentName: 'AltoroComponent',
+            createComponent: [
+                $class: 'com.urbancode.jenkins.plugins.ucdeploy.ComponentHelper$CreateComponentBlock',
+                componentTemplate: '',
+                componentApplication: 'Altoro'
+            ],
+            delivery: [
+                $class: 'com.urbancode.jenkins.plugins.ucdeploy.DeliveryHelper$Push',
+                pushVersion: '1.${BUILD_NUMBER}',
+                //baseDir: '/var/jenkins_home/workspace/JPetStore/target',
+		 baseDir: '/home/jenkins/workspace/Altoro/build/libs/',
+                fileIncludePatterns: '*.war',
+                fileExcludePatterns: '',
+               // pushProperties: 'jenkins.server=Jenkins-app\njenkins.reviewed=false',
+                pushDescription: 'Pushed from Jenkins'
+            ]
+        ]
+    ])
+	  
+		//sh 'env > env.txt'
+		//readFile('env.txt').split("\r?\n").each {
+		//println it
+		//}
+	echo "(*****)"
+	  echo "Demo1234 ${AltoroComponent_VersionId}"
+	  def newComponentVersionId = "${AltoroComponent_VersionId}"
+	  echo "git commit ${GIT_COMMIT}"
+	  step($class: 'UploadBuild', tenantId: "5ade13625558f2c6688d15ce", revision: "${GIT_COMMIT}", appName: "Altoro", requestor: "admin", id: "${newComponentVersionId}" )
+	  echo "Demo123 ${newComponentVersionId}"
+	sleep 25
+	  step([$class: 'UCDeployPublisher',
+		deploy: [ createSnapshot: [deployWithSnapshot: true, 
+			 snapshotName: "1.${BUILD_NUMBER}"],
+			 deployApp: 'Altoro', 
+			 deployDesc: 'Requested from Jenkins', 
+			 deployEnv: 'Altoro_Dev', 
+			 deployOnlyChanged: false, 
+			 deployProc: 'Deploy-Altoro', 
+			 deployReqProps: '', 
+			 deployVersions: "AltoroComponent:1.${BUILD_NUMBER}"], 
+		siteName: 'ucd-server'])
+     }
+   }
 
-	stage('Publish Artificats to UCD'){
-		step([$class: 'UCDeployPublisher',
-			siteName: '<UCD_SERVER_NAME>',
-			component: [
-				$class: 'com.urbancode.jenkins.plugins.ucdeploy.VersionHelper$VersionBlock',
-				componentName: '<COMPONENT_NAME>',
-				createComponent: [
-					$class: 'com.urbancode.jenkins.plugins.ucdeploy.ComponentHelper$CreateComponentBlock',
-					componentTemplate: '',
-					componentApplication: '<APPLICATION_NAME>'
-				],
-				delivery: [
-					$class: 'com.urbancode.jenkins.plugins.ucdeploy.DeliveryHelper$Push',
-					pushVersion: '1.${BUILD_NUMBER}',
-					baseDir: '/var/jenkins_home/workspace/${JOB_NAME}/target',
-					fileIncludePatterns: '*.war',
-					fileExcludePatterns: '',
-					pushDescription: 'Pushed from Jenkins'
-				]
-			]
-		])
-		def newComponentVersionId = "${JpetComponent_VersionId}"
-		step(
-			$class: 'UploadBuild',
-			tenantId: "<UCD_TENANTID>",
-			revision: "${GIT_COMMIT}",
-			appName: "<APPLICATION_NAME>", requestor: "admin", id: "${newComponentVersionId}"
-		)
-		sleep 25
-		step([$class: 'UCDeployPublisher',
-			deploy: [ createSnapshot: [deployWithSnapshot: true,
-					snapshotName: "1.${BUILD_NUMBER}"],
-				deployApp: '<APPLICATION_NAME>',
-				deployDesc: 'Requested from Jenkins',
-				deployEnv: '<PROJECT_DEPLOYMENT_ENVIRONMENT>',
-				deployOnlyChanged: false,
-				deployProc: 'Deploy-<PROJECT_NAME>',
-				deployReqProps: '',
-				deployVersions: "<COMPONENT_NAME>:1.${BUILD_NUMBER}"],
-			siteName: '<UCD_SERVER_NAME>']
-		)
-	}
-
-	stage ('HCL One Test') {
-		sleep 25
-		echo 'Executing HCL One test ... '
-		sh '/var/jenkins_home/onetest/hcl-onetest-command.sh <WORKSPACE_NAME> <APPLICATION_ENVIRONMENT_URL>'
-	}
 }
